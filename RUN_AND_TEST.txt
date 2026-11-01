@@ -1,0 +1,33 @@
+WINDOWS RUN / TEST GUIDE
+
+Project path example:
+C:\Projects\healthcare-website\healthcare-home-web-components
+
+1. Stop the current dev server with Ctrl+C.
+2. Back up the current folder.
+3. Replace the project files with this package.
+4. Run:
+   cd "C:\Projects\healthcare-website\healthcare-home-web-components"
+   npm run build
+5. If build passes:
+   npm run dev
+
+Doctor runtime test:
+- Login as Doctor
+- Dashboard: Patients count should no longer be 0 if patient rows exist.
+- Open Patients: patient list should load.
+- Open My Medicines:
+  * Search "Paracetamol"
+  * Existing medicine should show Added or an Add button.
+  * Use Add New Medicine for a medicine that is not in the global list.
+- Open Prescriptions:
+  * Select patient
+  * Search assigned medicine
+  * Fill Dosage / Frequency / Duration / Instructions
+  * Add 2 medicines
+  * Add Consultation Notes + Fee
+  * Submit
+  * Verify history displays both medicines.
+
+Backend API base expected:
+http://localhost/where_is_my_doctor/api

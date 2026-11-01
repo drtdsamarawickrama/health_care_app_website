@@ -1,0 +1,302 @@
+@import "tailwindcss";
+
+/* =========================================================
+   ROOT THEME
+========================================================= */
+
+:root {
+  --ink: #0f2027;
+  --deep: #16343c;
+  --mid: #203a43;
+
+  --teal: #0f9f8e;
+  --teal-dark: #087f73;
+  --teal-soft: #c9f5ee;
+
+  --sky-soft: #edf9fb;
+
+  --background: #f8fbfc;
+  --foreground: #172033;
+
+  --border-soft: #dbe4e8;
+}
+
+
+/* =========================================================
+   GLOBAL RESET
+========================================================= */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  width: 100%;
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  width: 100%;
+  min-height: 100vh;
+
+  color: var(--foreground);
+  background: var(--background);
+
+  font-family:
+    Arial,
+    Helvetica,
+    sans-serif;
+
+  overflow-x: hidden;
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+
+/* =========================================================
+   NEXT ROOT
+========================================================= */
+
+body > div {
+  width: 100%;
+}
+
+
+/* =========================================================
+   BASIC ELEMENT RESET
+========================================================= */
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  border: 0;
+}
+
+input,
+textarea,
+select {
+  min-width: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img,
+svg {
+  display: block;
+}
+
+
+/* =========================================================
+   INPUT FIX
+========================================================= */
+
+input {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+input::placeholder {
+  opacity: 1;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #1e293b;
+
+  -webkit-box-shadow:
+    0 0 0 1000px #ffffff inset;
+
+  transition:
+    background-color 5000s ease-in-out 0s;
+}
+
+
+/* =========================================================
+   CONTAINER
+========================================================= */
+
+.container-shell {
+  width: min(
+    1180px,
+    calc(100% - 2rem)
+  );
+
+  margin-inline: auto;
+}
+
+
+/* =========================================================
+   LARGE CONTAINER
+========================================================= */
+
+.container-wide {
+  width: min(
+    1500px,
+    calc(100% - 2rem)
+  );
+
+  margin-inline: auto;
+}
+
+
+/* =========================================================
+   GLASS
+========================================================= */
+
+.glass {
+  background:
+    rgba(
+      255,
+      255,
+      255,
+      0.08
+    );
+
+  border:
+    1px solid
+    rgba(
+      255,
+      255,
+      255,
+      0.15
+    );
+
+  backdrop-filter:
+    blur(18px);
+
+  -webkit-backdrop-filter:
+    blur(18px);
+}
+
+
+/* =========================================================
+   HERO GRID
+========================================================= */
+
+.hero-grid {
+  background-image:
+    linear-gradient(
+      rgba(255, 255, 255, 0.035)
+      1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.035)
+      1px,
+      transparent 1px
+    );
+
+  background-size:
+    48px 48px;
+}
+
+
+/* =========================================================
+   AUTH PAGE
+========================================================= */
+
+.auth-page {
+  width: 100%;
+  min-height: 100vh;
+}
+
+.auth-input {
+  width: 100%;
+  min-height: 58px;
+
+  border: 1px solid #d6dee3;
+  border-radius: 16px;
+
+  background: #ffffff;
+
+  color: #1e293b;
+
+  outline: none;
+
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.auth-input:focus {
+  border-color: var(--teal);
+
+  box-shadow:
+    0 0 0 4px
+    rgba(
+      15,
+      159,
+      142,
+      0.1
+    );
+}
+
+
+/* =========================================================
+   SCROLLBAR
+========================================================= */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #eef3f4;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #9fb7b6;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--teal);
+}
+
+
+/* =========================================================
+   SELECTION
+========================================================= */
+
+::selection {
+  color: #ffffff;
+
+  background:
+    var(--teal);
+}
+
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+
+@media (max-width: 640px) {
+  .container-shell,
+  .container-wide {
+    width: min(
+      100% - 1.5rem,
+      1180px
+    );
+  }
+
+  body {
+    background: #ffffff;
+  }
+}

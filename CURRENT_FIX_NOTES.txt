@@ -1,0 +1,60 @@
+WHERE IS MY DOCTOR - NEXT.JS WEB CURRENT FIX PACKAGE
+Prepared from the uploaded/current web project plus the already-applied Patient Self/Child step.
+
+Main fixes in this package:
+1. Doctor patient loading is now role-aware on ALL Doctor pages:
+   - Doctor Dashboard
+   - Patients
+   - Patient Details
+   - Prescriptions
+   These now call get_all_patients.php with role=Doctor + member_id.
+
+2. Doctor Dashboard patient count now uses the same current Doctor-member API path.
+
+3. Added /doctor/medicines ("My Medicines"):
+   - Loads the doctor's assigned medicine list.
+   - Searches the shared/global drugs database.
+   - Assigns an existing global medicine instead of creating a duplicate.
+   - Creates a new global medicine only when no exact medicine already exists.
+   - No medicine pricing is used in the clinical prescription workflow.
+
+4. Doctor Prescription page:
+   - Patient list uses Doctor member identity correctly.
+   - Medicine search is no longer blocked just because a patient has not yet been selected.
+   - Add New Medicine now checks the global database first, matching the Flutter flow.
+   - Existing unassigned medicine -> added to My Medicines.
+   - Existing assigned medicine -> reused.
+   - New medicine -> generic name required and then created/assigned.
+   - Multiple medicines, Dosage, Frequency, Duration, Instructions.
+   - Consultation Notes and Consultation Fee.
+   - Multi-item prescription history with legacy fallback.
+
+5. Doctor navigation:
+   - Added My Medicines.
+   - Added My Medicines quick action on Doctor Dashboard.
+
+6. Patient phone/search fallbacks:
+   - emergency_contact and nic_no are recognized where current get_all_patients.php exposes those fields.
+
+7. lib/api.js:
+   - Doctor medicine methods validate provider_member_id.
+   - Drug list responses are normalized.
+   - addDoctorDrug preserves current backend compatibility while keeping medicine price outside the clinical Rx flow.
+
+Static verification completed:
+- 29 JavaScript/JSX files parsed.
+- 0 JS/JSX syntax parse failures.
+- 0 unresolved local imports.
+- 0 missing named imports from lib/api.js.
+
+Runtime dependency:
+The PHP/XAMPP backend must contain the SAME current APIs already used by the working Flutter app:
+- get_all_patients.php
+- get_doctor_drugs.php
+- search_drugs.php
+- add_doctor_drug.php
+- create_prescription.php
+- get_prescriptions.php
+- get_provider_prescriptions.php
+
+No node_modules or .next is included. Run npm install in your Windows project after extraction if needed.
