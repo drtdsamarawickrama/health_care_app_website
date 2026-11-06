@@ -163,10 +163,23 @@ export default function DoctorDashboardPage() {
           if (!nic && pRecord) {
             nic = String(pRecord?.nic_no || pRecord?.nic || '').trim();
           }
+          const patName = String(
+            pres?.patient_name || pRecord?.full_name || ''
+          ).trim();
           return {
             ...pres,
+            patient_name: patName || pres?.patient_name,
             patient_nic: nic,
             nic_no: nic,
+            patient_phone:
+              pres.patient_phone ||
+              pRecord?.emergency_contact ||
+              pRecord?.phone ||
+              '',
+            patient_gender:
+              pres.patient_gender || pRecord?.gender || '',
+            patient_date_of_birth:
+              pres.patient_date_of_birth || pRecord?.date_of_birth || '',
           };
         });
 
