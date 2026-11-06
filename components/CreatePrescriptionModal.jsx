@@ -9,6 +9,7 @@ import {
   Search,
   Trash2,
   UserPlus,
+  UsersRound,
   X,
 } from 'lucide-react';
 import {
@@ -19,6 +20,7 @@ import {
   searchDrugs,
 } from '@/lib/api';
 import DoctorAddPatientModal from '@/components/DoctorAddPatientModal';
+import DoctorAddFamilyMemberModal from '@/components/DoctorAddFamilyMemberModal';
 import { displayName } from '@/lib/formatters';
 
 function extractArray(result, keys) {
@@ -39,17 +41,53 @@ function isTrue(value) {
   return norm === 'true' || norm === '1' || norm === 'yes';
 }
 
-function calcAge(dob) {
-  if (!dob) return '';
+function calcAgeYears(dob) {
+  if (!dob) return null;
+  const parts = String(dob).trim().split('-').map(Number);
+  if (parts.length === 3 && !parts.some(Number.isNaN)) {
+    const [year, month, day] = parts;
+    const today = new Date();
+    let age = today.getFullYear() - year;
+    const currentMonth = today.getMonth() + 1;
+    const currentDay = today.getDate();
+    if (currentMonth < month || (currentMonth === month && currentDay < day)) {
+      age--;
+    }
+    return age >= 0 ? age : null;
+  }
   const d = new Date(dob);
-  if (Number.isNaN(d.getTime())) return '';
+  if (Number.isNaN(d.getTime())) return null;
   const today = new Date();
   let age = today.getFullYear() - d.getFullYear();
   const m = today.getMonth() - d.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < d.getDate())) {
     age--;
   }
-  return age >= 0 ? `${age} yrs` : '';
+  return age >= 0 ? age : null;
+}
+
+function calcAge(dob) {
+  const age = calcAgeYears(dob);
+  return age !== null ? `${age} yrs` : '';
+}
+
+function formatPatientNic(pat) {
+  const rawNic = String(pat?.nic_no || pat?.nic || '').trim();
+  if (rawNic) return rawNic;
+  const age = calcAgeYears(pat?.date_of_birth);
+  if (age !== null && age < 18) {
+    return 'Under 18 (No NIC)';
+  }
+  return 'N/A';
+}
+
+function formatDependentLabel(pat) {
+  const rel = String(
+    pat?.relationship_to_user || pat?.relationship || 'Self'
+  ).trim();
+  if (!rel || rel === 'Self') return '';
+  const guardianName = String(pat?.guardian_name || '').trim();
+  return guardianName ? `${rel} of ${guardianName}` : rel;
 }
 
 export default function CreatePrescriptionModal({
@@ -64,6 +102,7 @@ export default function CreatePrescriptionModal({
   const [patientQuery, setPatientQuery] = useState('');
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [addPatientOpen, setAddPatientOpen] = useState(false);
+  const [addFamilyMemberOpen, setAddFamilyMemberOpen] = useState(false);
 
   const [doctorDrugs, setDoctorDrugs] = useState([]);
   const [loadingDrugs, setLoadingDrugs] = useState(false);
@@ -93,13 +132,16 @@ export default function CreatePrescriptionModal({
   const [successMsg, setSuccessMsg] = useState('');
 
   const loadPatients = useCallback(async () => {
-    if (!memberId) return;
+    if (!memberId) return [];
     setLoadingPatients(true);
     try {
       const res = await getAllPatients(memberId);
-      setPatients(extractArray(res, ['patients', 'data']));
+      const list = extractArray(res, ['patients', 'data']);
+      setPatients(list);
+      return list;
     } catch {
       setPatients([]);
+      return [];
     } finally {
       setLoadingPatients(false);
     }
@@ -142,7 +184,13 @@ export default function CreatePrescriptionModal({
         const phone = String(
           p?.emergency_contact || p?.phone || ''
         ).toLowerCase();
-        return name.includes(q) || nic.includes(q) || phone.includes(q);
+        const guardian = String(p?.guardian_name || '').toLowerCase();
+        return (
+          name.includes(q) ||
+          nic.includes(q) ||
+          phone.includes(q) ||
+          guardian.includes(q)
+        );
       })
       .slice(0, 8);
   }, [patients, patientQuery]);
@@ -185,6 +233,18 @@ export default function CreatePrescriptionModal({
       setMedicineError('Select a medicine from My Medicines.');
       return;
     }
+
+    const drugId = Number(selectedDrug?.drug_id ?? selectedDrug?.id ?? 0);
+    if (
+      drugId > 0 &&
+      medicineList.some((m) => Number(m.drug_id) === drugId)
+    ) {
+      setMedicineError(
+        'This medicine is already added to the prescription.'
+      );
+      return;
+    }
+
     if (!dosage.trim()) {
       setMedicineError('Enter dosage (e.g. 1 Tablet).');
       return;
@@ -202,7 +262,6 @@ export default function CreatePrescriptionModal({
       return;
     }
 
-    const drugId = Number(selectedDrug?.drug_id ?? selectedDrug?.id ?? 0);
     setMedicineList((prev) => [
       ...prev,
       {
@@ -331,6 +390,21 @@ export default function CreatePrescriptionModal({
       return;
     }
 
+    const draftHasInput =
+      selectedDrug !== null ||
+      drugQuery.trim() !== '' ||
+      dosage.trim() !== '' ||
+      frequency.trim() !== '' ||
+      instruction.trim() !== '' ||
+      duration.trim() !== '';
+
+    if (draftHasInput) {
+      setError(
+        'Tap "Add Medicine" to include the medicine currently being entered, or clear those fields.'
+      );
+      return;
+    }
+
     if (medicineList.length === 0) {
       setError('Please add at least one medicine to the prescription.');
       return;
@@ -429,18 +503,28 @@ export default function CreatePrescriptionModal({
 
             {/* 1. Search Patient */}
             <div>
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-base font-extrabold text-slate-900">
                   Search Patient
                 </h3>
-                <button
-                  type="button"
-                  onClick={() => setAddPatientOpen(true)}
-                  className="inline-flex items-center gap-1.5 text-xs font-extrabold text-emerald-700 hover:underline"
-                >
-                  <UserPlus size={16} />
-                  Add New Patient
-                </button>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setAddPatientOpen(true)}
+                    className="inline-flex items-center gap-1.5 text-xs font-extrabold text-emerald-700 hover:underline"
+                  >
+                    <UserPlus size={16} />
+                    Add Patient
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddFamilyMemberOpen(true)}
+                    className="inline-flex items-center gap-1.5 text-xs font-extrabold text-emerald-700 hover:underline"
+                  >
+                    <UsersRound size={16} />
+                    Add Family Member
+                  </button>
+                </div>
               </div>
 
               <div className="relative mt-2.5">
@@ -484,7 +568,15 @@ export default function CreatePrescriptionModal({
                         onClick={() => setAddPatientOpen(true)}
                         className="font-bold text-emerald-700 underline"
                       >
-                        Add New Patient
+                        Add Patient
+                      </button>{' '}
+                      or{' '}
+                      <button
+                        type="button"
+                        onClick={() => setAddFamilyMemberOpen(true)}
+                        className="font-bold text-emerald-700 underline"
+                      >
+                        Add Family Member
                       </button>{' '}
                       to register one.
                     </div>
@@ -492,9 +584,14 @@ export default function CreatePrescriptionModal({
                     <div className="divide-y divide-slate-100">
                       {filteredPatients.map((pat) => {
                         const patName = displayName(pat, 'Patient');
-                        const nic = pat.nic_no || pat.nic || 'No NIC';
+                        const nic = formatPatientNic(pat);
                         const phone =
-                          pat.emergency_contact || pat.phone || 'No Phone';
+                          pat.emergency_contact || pat.phone || 'N/A';
+                        const depLabel = formatDependentLabel(pat);
+                        const ageStr = calcAge(pat.date_of_birth);
+                        const genderAge = [pat.gender, ageStr]
+                          .filter(Boolean)
+                          .join(', ');
                         return (
                           <button
                             key={pat.id || pat.patient_id}
@@ -507,12 +604,24 @@ export default function CreatePrescriptionModal({
                                 {patName}
                               </p>
                               <p className="text-xs text-slate-500">
-                                NIC: {nic} • {phone}
+                                NIC: {nic} | {phone}
                               </p>
+                              {depLabel && (
+                                <p className="mt-0.5 text-[11px] font-bold text-emerald-700">
+                                  {depLabel}
+                                </p>
+                              )}
                             </div>
-                            <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
-                              Select
-                            </span>
+                            <div className="flex items-center gap-2">
+                              {genderAge && (
+                                <span className="hidden text-xs font-semibold text-slate-500 sm:inline">
+                                  {genderAge}
+                                </span>
+                              )}
+                              <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+                                Select
+                              </span>
+                            </div>
                           </button>
                         );
                       })}
@@ -539,15 +648,16 @@ export default function CreatePrescriptionModal({
                           {displayName(selectedPatient, 'Patient')}
                         </p>
                         <p className="text-xs text-slate-600">
-                          NIC:{' '}
-                          {selectedPatient.nic_no ||
-                            selectedPatient.nic ||
-                            'N/A'}{' '}
-                          |{' '}
+                          NIC: {formatPatientNic(selectedPatient)} |{' '}
                           {selectedPatient.emergency_contact ||
                             selectedPatient.phone ||
                             'N/A'}
                         </p>
+                        {formatDependentLabel(selectedPatient) && (
+                          <p className="mt-0.5 text-[11px] font-bold text-emerald-700">
+                            {formatDependentLabel(selectedPatient)}
+                          </p>
+                        )}
                       </div>
                     </div>
 
@@ -986,11 +1096,51 @@ export default function CreatePrescriptionModal({
         onClose={() => setAddPatientOpen(false)}
         doctorMemberId={memberId}
         onPatientCreated={async (created) => {
-          await loadPatients();
-          if (created?.patient) {
+          const freshList = await loadPatients();
+          const newId = Number(
+            created?.patient_id ??
+              created?.patient?.id ??
+              created?.patient?.patient_id ??
+              0
+          );
+          const matched = freshList.find(
+            (p) => Number(p?.id ?? p?.patient_id ?? 0) === newId
+          );
+          if (matched) {
+            setSelectedPatient(matched);
+          } else if (created?.patient) {
             setSelectedPatient(created.patient);
-            setPatientQuery('');
           }
+          setPatientQuery('');
+          setError('');
+        }}
+      />
+
+      {/* Doctor Add Family Member Modal */}
+      <DoctorAddFamilyMemberModal
+        open={addFamilyMemberOpen}
+        onClose={() => setAddFamilyMemberOpen(false)}
+        doctorMemberId={memberId}
+        patients={patients}
+        initialPatient={selectedPatient}
+        onFamilyMemberCreated={async (created) => {
+          const freshList = await loadPatients();
+          const newId = Number(
+            created?.patient_id ??
+              created?.patient?.id ??
+              created?.patient?.patient_id ??
+              0
+          );
+          const matched = freshList.find(
+            (p) => Number(p?.id ?? p?.patient_id ?? 0) === newId
+          );
+          if (matched) {
+            setSelectedPatient(matched);
+          } else if (created?.patient) {
+            setSelectedPatient(created.patient);
+          }
+          setPatientQuery('');
+          setError('');
         }}
       />
     </>

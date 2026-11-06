@@ -2,301 +2,312 @@
 
 import { useMemo, useState } from 'react';
 import {
-  AlertCircle,
-  Calendar,
-  Check,
   CheckCircle2,
-  Copy,
-  IdCard,
-  KeyRound,
+  Info,
   Loader2,
-  Mail,
-  MapPin,
-  Phone,
   UserPlus,
-  UserRound,
   X,
 } from 'lucide-react';
 import { doctorAddPatient } from '@/lib/api';
 
+function calculateExactAge(dobString) {
+  if (!dobString) return null;
+  const parts = String(dobString)
+    .trim()
+    .split('-')
+    .map(Number);
+  if (
+    parts.length !== 3 ||
+    parts.some((n) => Number.isNaN(n))
+  ) {
+    return null;
+  }
+  const [year, month, day] = parts;
+  const today = new Date();
+  let age = today.getFullYear() - year;
+  const currentMonth = today.getMonth() + 1;
+  const currentDay = today.getDate();
+
+  if (
+    currentMonth < month ||
+    (currentMonth === month && currentDay < day)
+  ) {
+    age--;
+  }
+  return age;
+}
+
 export default function DoctorAddPatientModal({
+  open,
   isOpen,
   onClose,
   doctorMemberId,
   onPatientCreated,
 }) {
+  const modalOpen = Boolean(open ?? isOpen);
   const [fullName, setFullName] = useState('');
-  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [dateOfBirth, setDateOfBirth] =
+    useState('');
   const [gender, setGender] = useState('Male');
   const [nicNo, setNicNo] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [homeAddress, setHomeAddress] = useState('');
+  const [homeAddress, setHomeAddress] =
+    useState('');
 
-  const [submitting, setSubmitting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [createdResult, setCreatedResult] = useState(null);
-  const [copied, setCopied] = useState(false);
+  const [createdInfo, setCreatedInfo] =
+    useState(null);
 
-  const calculatedAge = useMemo(() => {
-    if (!dateOfBirth) return null;
-    const birth = new Date(dateOfBirth);
-    if (Number.isNaN(birth.getTime())) return null;
-    const today = new Date();
-    let age = today.getFullYear() - birth.getFullYear();
-    const m = today.getMonth() - birth.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
-      age -= 1;
-    }
-    return age;
-  }, [dateOfBirth]);
+  const age = useMemo(
+    () => calculateExactAge(dateOfBirth),
+    [dateOfBirth]
+  );
 
-  const isChild = calculatedAge !== null && calculatedAge >= 0 && calculatedAge < 18;
+  const isUnder18 =
+    age !== null && age >= 0 && age < 18;
 
-  if (!isOpen) return null;
+  if (!modalOpen) {
+    return null;
+  }
 
-  const resetAndClose = () => {
-    setFullName('');
-    setDateOfBirth('');
-    setGender('Male');
-    setNicNo('');
-    setEmail('');
-    setPhone('');
-    setHomeAddress('');
+  const handleClose = () => {
+    setCreatedInfo(null);
     setError('');
-    setCreatedResult(null);
-    setCopied(false);
     onClose?.();
+  };
+
+  const handleDobChange = (value) => {
+    setDateOfBirth(value);
+    const nextAge = calculateExactAge(value);
+    if (
+      nextAge !== null &&
+      nextAge >= 0 &&
+      nextAge < 18
+    ) {
+      setNicNo('');
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    if (!doctorMemberId || Number(doctorMemberId) <= 0) {
-      setError('Doctor session not found. Please sign in again.');
-      return;
-    }
+    const cleanName = fullName.trim();
+    const cleanPhone = phone.trim();
+    const cleanEmail = email.trim();
+    const cleanAddress = homeAddress.trim();
+    const cleanNic = nicNo.trim().toUpperCase();
 
-    if (!fullName.trim()) {
+    if (!cleanName) {
       setError('Full name is required.');
       return;
     }
+
     if (!dateOfBirth) {
-      setError('Date of birth is required.');
-      return;
-    }
-    if (calculatedAge !== null && calculatedAge < 0) {
-      setError('Date of birth cannot be in the future.');
-      return;
-    }
-    if (!isChild && !nicNo.trim()) {
-      setError('NIC Number is required for adult patients (18+ years).');
-      return;
-    }
-    if (nicNo.trim() && !/^([0-9]{9}[VXvx]|[0-9]{12})$/.test(nicNo.trim())) {
-      setError('Invalid NIC format (use 9 digits + V/X or 12 digits).');
-      return;
-    }
-    if (!email.trim()) {
-      setError('Email address is required.');
-      return;
-    }
-    if (!phone.trim()) {
-      setError('Phone number is required.');
-      return;
-    }
-    if (!homeAddress.trim()) {
-      setError('Home address is required.');
+      setError('Please select date of birth.');
       return;
     }
 
-    setSubmitting(true);
+    const todayStr = new Date()
+      .toISOString()
+      .split('T')[0];
+    if (
+      dateOfBirth > todayStr ||
+      (age !== null && age < 0)
+    ) {
+      setError(
+        'Date of birth cannot be in the future.'
+      );
+      return;
+    }
 
-    try {
-      const res = await doctorAddPatient({
-        doctorMemberId: Number(doctorMemberId),
-        fullName: fullName.trim(),
-        dateOfBirth,
-        gender,
-        nicNo: nicNo.trim().toUpperCase(),
-        email: email.trim(),
-        phone: phone.trim(),
-        homeAddress: homeAddress.trim(),
-      });
+    if (
+      !['Male', 'Female', 'Other'].includes(
+        gender
+      )
+    ) {
+      setError('Please select a valid gender.');
+      return;
+    }
 
-      if (!res?.success) {
-        setError(res?.message || 'Failed to register patient.');
+    if (!isUnder18) {
+      if (!cleanNic) {
+        setError(
+          'NIC is required for patients 18 or older.'
+        );
         return;
       }
 
-      const newPatientObj = {
-        id: res.patient_id,
-        member_id: res.member_id,
-        full_name: fullName.trim(),
-        date_of_birth: dateOfBirth,
-        gender,
-        nic_no: nicNo.trim().toUpperCase() || null,
-        email: email.trim(),
-        phone: phone.trim(),
-        emergency_contact: phone.trim(),
-        home_address: homeAddress.trim(),
-      };
-
-      setCreatedResult({
-        ...res,
-        patient: newPatientObj,
-      });
-
-      onPatientCreated?.(newPatientObj, res);
-    } catch (err) {
-      setError(err?.message || 'Unable to register patient.');
-    } finally {
-      setSubmitting(false);
+      const validNic =
+        /^([0-9]{9}[VX]|[0-9]{12})$/.test(
+          cleanNic
+        );
+      if (!validNic) {
+        setError(
+          'Invalid NIC format (e.g. 983651435V or 200018501033).'
+        );
+        return;
+      }
     }
-  };
 
-  const handleCopyCredentials = async () => {
-    if (!createdResult) return;
-    const text = [
-      `Patient Name: ${createdResult.patient.full_name}`,
-      `Phone: ${createdResult.patient.phone}`,
-      `NIC: ${createdResult.patient.nic_no || 'N/A'}`,
-      `Temporary Password: ${createdResult.temporary_password || 'N/A'}`,
-    ].join('\n');
+    if (!cleanPhone) {
+      setError('Mobile number is required.');
+      return;
+    }
+
+    if (!/^[0-9]{9,15}$/.test(cleanPhone)) {
+      setError(
+        'Mobile number must be 9 to 15 digits.'
+      );
+      return;
+    }
+
+    if (
+      cleanEmail &&
+      !/^[^@]+@[^@]+\.[^@]+$/.test(cleanEmail)
+    ) {
+      setError(
+        'Please enter a valid email address.'
+      );
+      return;
+    }
+
+    setSaving(true);
 
     try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-    } catch {
-      // ignore clipboard error
+      const result = await doctorAddPatient({
+        doctorMemberId,
+        fullName: cleanName,
+        dateOfBirth,
+        gender,
+        email: cleanEmail,
+        phone: cleanPhone,
+        homeAddress: cleanAddress,
+        nicNo: isUnder18 ? '' : cleanNic,
+        createMemberAccount: false,
+      });
+
+      if (!result?.success) {
+        setError(
+          result?.message ||
+            'Failed to add patient.'
+        );
+        return;
+      }
+
+      const newPatient = {
+        id: Number(result.patient_id),
+        patient_id: Number(result.patient_id),
+        member_id: result.member_id
+          ? Number(result.member_id)
+          : null,
+        full_name: cleanName,
+        nic_no: isUnder18 ? '' : cleanNic,
+        date_of_birth: dateOfBirth,
+        gender,
+        email: cleanEmail,
+        phone: cleanPhone,
+        emergency_contact: cleanPhone,
+        home_address: cleanAddress,
+        relationship_to_user: 'Self',
+      };
+
+      setCreatedInfo({
+        patient: newPatient,
+        message:
+          result.message ||
+          'Patient added successfully',
+      });
+
+      setFullName('');
+      setDateOfBirth('');
+      setGender('Male');
+      setNicNo('');
+      setEmail('');
+      setPhone('');
+      setHomeAddress('');
+
+      if (onPatientCreated) {
+        await onPatientCreated({
+          ...result,
+          patient: newPatient,
+        });
+      }
+    } catch (err) {
+      setError(
+        err?.message || 'Failed to add patient.'
+      );
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
-      <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-[28px] border border-slate-200 bg-white shadow-2xl">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-50 text-teal-600">
-              <UserPlus size={21} />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">
-                {createdResult ? 'Patient Registered' : 'Register New Patient'}
-              </h2>
-              <p className="text-xs text-slate-500">
-                {createdResult
-                  ? 'Patient medical record has been created in the system'
-                  : 'Create a patient record (and login account if NIC is provided)'}
-              </p>
-            </div>
+    <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/55 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-t-[28px] bg-white p-5 shadow-2xl sm:rounded-[28px] sm:p-7">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-600">
+              Doctor Portal
+            </p>
+            <h2 className="mt-1 text-xl font-bold text-slate-900">
+              Add New Patient
+            </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Register a new patient record for prescriptions and clinical visits.
+            </p>
           </div>
-
           <button
             type="button"
-            onClick={resetAndClose}
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            onClick={handleClose}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50"
           >
             <X size={18} />
           </button>
         </div>
 
-        {/* Body */}
-        {createdResult ? (
-          <div className="p-6">
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 text-emerald-900">
-              <div className="flex items-start gap-3">
-                <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-600" size={20} />
-                <div>
-                  <p className="text-sm font-bold">{createdResult.message}</p>
-                  <p className="mt-1 text-xs text-emerald-700">
-                    Patient ID #{createdResult.patient_id} is now available for
-                    prescriptions and consultations.
-                  </p>
-                </div>
+        {createdInfo ? (
+          <div className="mt-5 space-y-4">
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900">
+              <div className="flex items-center gap-2 font-bold">
+                <CheckCircle2
+                  size={18}
+                  className="text-emerald-600"
+                />
+                <span>
+                  {createdInfo.message}
+                </span>
               </div>
+              <p className="mt-2 text-xs text-emerald-800">
+                Patient{' '}
+                <strong>
+                  {createdInfo.patient.full_name}
+                </strong>{' '}
+                (ID #{createdInfo.patient.patient_id}
+                ) has been created and selected.
+              </p>
             </div>
 
-            {createdResult.account_created && createdResult.temporary_password ? (
-              <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50/70 p-5">
-                <div className="flex items-center gap-2 text-amber-900">
-                  <KeyRound size={18} className="text-amber-600" />
-                  <p className="text-sm font-bold">
-                    One-Time Patient Login Credentials
-                  </p>
-                </div>
-
-                <p className="mt-1.5 text-xs leading-5 text-amber-800">
-                  Share these credentials with the patient so they can sign in
-                  on the mobile app or website. The temporary password is shown
-                  only once.
-                </p>
-
-                <div className="mt-4 space-y-2 rounded-xl bg-white p-4 text-xs border border-amber-200/80">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Phone Number:</span>
-                    <span className="font-mono font-bold text-slate-900">
-                      {createdResult.patient.phone}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">NIC Number:</span>
-                    <span className="font-mono font-bold text-slate-900">
-                      {createdResult.patient.nic_no}
-                    </span>
-                  </div>
-                  <div className="flex justify-between border-t border-slate-100 pt-2">
-                    <span className="text-slate-500">Temporary Password:</span>
-                    <span className="font-mono text-sm font-extrabold text-teal-700">
-                      {createdResult.temporary_password}
-                    </span>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleCopyCredentials}
-                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-xs font-bold text-amber-900 hover:bg-amber-100/50"
-                >
-                  {copied ? (
-                    <>
-                      <Check size={15} className="text-emerald-600" />
-                      Copied to Clipboard
-                    </>
-                  ) : (
-                    <>
-                      <Copy size={15} />
-                      Copy Login Credentials
-                    </>
-                  )}
-                </button>
-              </div>
-            ) : (
-              <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
-                Child patient profile created without a standalone login account
-                (no NIC provided).
-              </div>
-            )}
-
-            <div className="mt-6 flex justify-end">
+            <div className="flex justify-end">
               <button
                 type="button"
-                onClick={resetAndClose}
-                className="rounded-xl bg-teal-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-teal-700"
+                onClick={handleClose}
+                className="h-11 rounded-xl bg-teal-600 px-6 text-xs font-bold text-white shadow-md hover:bg-teal-700"
               >
                 Done
               </button>
             </div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4 p-6">
+          <form
+            onSubmit={handleSubmit}
+            className="mt-5 space-y-4"
+          >
             {error && (
-              <div className="flex items-start gap-2.5 rounded-2xl border border-red-200 bg-red-50 p-3.5 text-xs font-medium text-red-700">
-                <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                <span>{error}</span>
+              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-600">
+                {error}
               </div>
             )}
 
@@ -305,43 +316,36 @@ export default function DoctorAddPatientModal({
                 <label className="mb-1.5 block text-xs font-bold text-slate-700">
                   Full Name *
                 </label>
-                <div className="relative">
-                  <UserRound
-                    size={16}
-                    className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-                  <input
-                    type="text"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Patient full name"
-                    className="h-11 w-full rounded-xl border border-slate-200 pl-10 pr-3 text-sm outline-none focus:border-teal-500"
-                  />
-                </div>
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) =>
+                    setFullName(e.target.value)
+                  }
+                  placeholder="Enter patient full name"
+                  className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm text-slate-800 outline-none focus:border-teal-500"
+                />
               </div>
 
               <div>
                 <label className="mb-1.5 block text-xs font-bold text-slate-700">
                   Date of Birth *
-                  {calculatedAge !== null && calculatedAge >= 0 && (
-                    <span className="ml-2 rounded-full bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">
-                      {calculatedAge} yrs ({isChild ? 'Child' : 'Adult'})
-                    </span>
-                  )}
                 </label>
-                <div className="relative">
-                  <Calendar
-                    size={16}
-                    className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-                  <input
-                    type="date"
-                    value={dateOfBirth}
-                    onChange={(e) => setDateOfBirth(e.target.value)}
-                    max={new Date().toISOString().slice(0, 10)}
-                    className="h-11 w-full rounded-xl border border-slate-200 pl-10 pr-3 text-sm outline-none focus:border-teal-500"
-                  />
-                </div>
+                <input
+                  type="date"
+                  max={
+                    new Date()
+                      .toISOString()
+                      .split('T')[0]
+                  }
+                  value={dateOfBirth}
+                  onChange={(e) =>
+                    handleDobChange(
+                      e.target.value
+                    )
+                  }
+                  className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm text-slate-800 outline-none focus:border-teal-500"
+                />
               </div>
 
               <div>
@@ -350,115 +354,123 @@ export default function DoctorAddPatientModal({
                 </label>
                 <select
                   value={gender}
-                  onChange={(e) => setGender(e.target.value)}
-                  className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-teal-500"
+                  onChange={(e) =>
+                    setGender(e.target.value)
+                  }
+                  className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none focus:border-teal-500"
                 >
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
+                  <option value="Male">
+                    Male
+                  </option>
+                  <option value="Female">
+                    Female
+                  </option>
+                  <option value="Other">
+                    Other
+                  </option>
                 </select>
               </div>
 
-              <div>
-                <label className="mb-1.5 block text-xs font-bold text-slate-700">
-                  NIC Number {isChild ? '(Optional for Child)' : '*'}
-                </label>
-                <div className="relative">
-                  <IdCard
+              {isUnder18 ? (
+                <div className="sm:col-span-2 flex items-center gap-2.5 rounded-2xl border border-teal-200 bg-teal-50/70 px-3.5 py-2.5 text-xs font-semibold text-teal-800">
+                  <Info
                     size={16}
-                    className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                    className="shrink-0 text-teal-600"
                   />
+                  <span>
+                    Under 18 ({age} yrs) — NIC is not required.
+                  </span>
+                </div>
+              ) : (
+                <div className="sm:col-span-2">
+                  <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                    NIC Number *
+                  </label>
                   <input
                     type="text"
                     value={nicNo}
-                    onChange={(e) => setNicNo(e.target.value.toUpperCase())}
-                    placeholder={isChild ? 'Optional for < 18 yrs' : '991234567V or 200012345678'}
-                    className="h-11 w-full rounded-xl border border-slate-200 pl-10 pr-3 text-sm outline-none focus:border-teal-500"
+                    onChange={(e) =>
+                      setNicNo(
+                        e.target.value.toUpperCase()
+                      )
+                    }
+                    placeholder="983651435V or 200018501033"
+                    className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm uppercase text-slate-800 outline-none focus:border-teal-500"
                   />
                 </div>
+              )}
+
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                  Mobile Number *
+                </label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) =>
+                    setPhone(e.target.value)
+                  }
+                  placeholder="0771234567"
+                  className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm text-slate-800 outline-none focus:border-teal-500"
+                />
               </div>
 
               <div>
                 <label className="mb-1.5 block text-xs font-bold text-slate-700">
-                  Phone Number *
+                  Email Address (Optional)
                 </label>
-                <div className="relative">
-                  <Phone
-                    size={16}
-                    className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-                  <input
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="0771234567"
-                    className="h-11 w-full rounded-xl border border-slate-200 pl-10 pr-3 text-sm outline-none focus:border-teal-500"
-                  />
-                </div>
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="mb-1.5 block text-xs font-bold text-slate-700">
-                  Email Address *
-                </label>
-                <div className="relative">
-                  <Mail
-                    size={16}
-                    className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="patient@example.com"
-                    className="h-11 w-full rounded-xl border border-slate-200 pl-10 pr-3 text-sm outline-none focus:border-teal-500"
-                  />
-                </div>
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="mb-1.5 block text-xs font-bold text-slate-700">
-                  Home Address *
-                </label>
-                <div className="relative">
-                  <MapPin
-                    size={16}
-                    className="pointer-events-none absolute left-3.5 top-3.5 text-slate-400"
-                  />
-                  <textarea
-                    rows={2}
-                    value={homeAddress}
-                    onChange={(e) => setHomeAddress(e.target.value)}
-                    placeholder="Enter residential address"
-                    className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-teal-500"
-                  />
-                </div>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) =>
+                    setEmail(e.target.value)
+                  }
+                  placeholder="patient@example.com"
+                  className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm text-slate-800 outline-none focus:border-teal-500"
+                />
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-4">
+            <div>
+              <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                Home Address (Optional)
+              </label>
+              <textarea
+                rows={2}
+                value={homeAddress}
+                onChange={(e) =>
+                  setHomeAddress(e.target.value)
+                }
+                placeholder="Enter residential address"
+                className="w-full rounded-xl border border-slate-300 p-3 text-sm text-slate-800 outline-none focus:border-teal-500"
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3">
               <button
                 type="button"
-                onClick={resetAndClose}
-                disabled={submitting}
-                className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                onClick={handleClose}
+                className="h-11 rounded-xl border border-slate-200 px-5 text-xs font-bold text-slate-600 hover:bg-slate-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                disabled={submitting}
-                className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-teal-700 disabled:opacity-60"
+                disabled={saving}
+                className="inline-flex h-11 items-center gap-2 rounded-xl bg-teal-600 px-6 text-xs font-bold text-white shadow-md shadow-teal-600/20 hover:bg-teal-700 disabled:opacity-60"
               >
-                {submitting ? (
+                {saving ? (
                   <>
-                    <Loader2 size={15} className="animate-spin" />
-                    Creating Patient...
+                    <Loader2
+                      size={16}
+                      className="animate-spin"
+                    />
+                    Saving...
                   </>
                 ) : (
                   <>
-                    <UserPlus size={15} />
-                    Create Patient
+                    <UserPlus size={16} />
+                    Save Patient
                   </>
                 )}
               </button>
@@ -469,4 +481,3 @@ export default function DoctorAddPatientModal({
     </div>
   );
 }
-

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Info,
   Loader2,
@@ -8,6 +8,8 @@ import {
   X,
 } from 'lucide-react';
 import { addFamilyMember } from '@/lib/api';
+import { useAuth } from '@/components/AuthContext';
+import { usePatientProfile } from '@/components/PatientProfileContext';
 
 const RELATIONSHIPS = [
   'Child',
@@ -32,12 +34,47 @@ const BLOOD_GROUPS = [
   'O-',
 ];
 
+function calculateExactAge(dobString) {
+  if (!dobString) return null;
+  const parts = String(dobString)
+    .trim()
+    .split('-')
+    .map(Number);
+  if (
+    parts.length !== 3 ||
+    parts.some((n) => Number.isNaN(n))
+  ) {
+    return null;
+  }
+  const [year, month, day] = parts;
+  const today = new Date();
+  let age = today.getFullYear() - year;
+  const currentMonth = today.getMonth() + 1;
+  const currentDay = today.getDate();
+
+  if (
+    currentMonth < month ||
+    (currentMonth === month && currentDay < day)
+  ) {
+    age--;
+  }
+  return age;
+}
+
 export default function AddFamilyMemberModal({
   open,
   onClose,
   memberId,
   onAdded,
 }) {
+  const { memberId: authMemberId, member } =
+    useAuth();
+  const { patients } = usePatientProfile();
+
+  const resolvedMemberId = Number(
+    memberId || authMemberId || 0
+  );
+
   const [relationship, setRelationship] =
     useState('Child');
   const [fullName, setFullName] = useState('');
@@ -67,15 +104,73 @@ export default function AddFamilyMemberModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    if (!open) return;
+    setError('');
+    const selfProfile =
+      patients?.find(
+        (p) =>
+          String(
+            p?.relationship_to_user || 'Self'
+          ).trim() === 'Self'
+      ) || null;
+    if (!homeAddress.trim()) {
+      setHomeAddress(
+        String(
+          selfProfile?.home_address ||
+            member?.address ||
+            ''
+        ).trim()
+      );
+    }
+    if (!emergencyContact.trim()) {
+      setEmergencyContact(
+        String(
+          selfProfile?.emergency_contact ||
+            selfProfile?.phone ||
+            member?.phone ||
+            ''
+        ).trim()
+      );
+    }
+  }, [open, patients, member]);
+
+  const age = useMemo(
+    () => calculateExactAge(dateOfBirth),
+    [dateOfBirth]
+  );
+
+  const isChild = relationship === 'Child';
+  const isUnder18 =
+    age !== null && age >= 0 && age < 18;
+  const hideNic = isChild || isUnder18;
+
   if (!open) {
     return null;
   }
 
-  const isChild = relationship === 'Child';
+  const handleDobChange = (value) => {
+    setDateOfBirth(value);
+    const nextAge = calculateExactAge(value);
+    if (
+      nextAge !== null &&
+      nextAge >= 0 &&
+      nextAge < 18
+    ) {
+      setNicNo('');
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (resolvedMemberId <= 0) {
+      setError(
+        'Patient session not found. Please log in again.'
+      );
+      return;
+    }
 
     if (!relationship) {
       setError('Please select a relationship.');
@@ -89,6 +184,19 @@ export default function AddFamilyMemberModal({
 
     if (!dateOfBirth) {
       setError('Please select date of birth.');
+      return;
+    }
+
+    const todayStr = new Date()
+      .toISOString()
+      .split('T')[0];
+    if (
+      dateOfBirth > todayStr ||
+      (age !== null && age < 0)
+    ) {
+      setError(
+        'Date of birth cannot be in the future.'
+      );
       return;
     }
 
@@ -109,7 +217,7 @@ export default function AddFamilyMemberModal({
       return;
     }
 
-    if (!isChild && nicNo.trim()) {
+    if (!hideNic && nicNo.trim()) {
       const cleanedNic = nicNo
         .trim()
         .toUpperCase();
@@ -131,7 +239,7 @@ export default function AddFamilyMemberModal({
 
     try {
       const result = await addFamilyMember({
-        managedByMemberId: memberId,
+        managedByMemberId: resolvedMemberId,
         relationshipToUser: relationship,
         fullName: fullName.trim(),
         dateOfBirth,
@@ -145,7 +253,9 @@ export default function AddFamilyMemberModal({
         allergies: allergies.trim(),
         currentMedications:
           currentMedications.trim(),
-        nicNo: isChild ? '' : nicNo.trim(),
+        nicNo: hideNic
+          ? ''
+          : nicNo.trim().toUpperCase(),
       });
 
       if (!result?.success) {
@@ -265,7 +375,7 @@ export default function AddFamilyMemberModal({
                 }
                 value={dateOfBirth}
                 onChange={(e) =>
-                  setDateOfBirth(e.target.value)
+                  handleDobChange(e.target.value)
                 }
                 className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm text-slate-800 outline-none focus:border-teal-500"
               />
@@ -334,7 +444,7 @@ export default function AddFamilyMemberModal({
             </div>
           </div>
 
-          {!isChild && (
+          {!hideNic && (
             <div>
               <label className="mb-1.5 block text-xs font-bold text-slate-700">
                 NIC Number (Optional)
@@ -353,14 +463,16 @@ export default function AddFamilyMemberModal({
             </div>
           )}
 
-          {isChild && (
+          {hideNic && (
             <div className="flex items-start gap-2.5 rounded-2xl border border-teal-200 bg-teal-50/70 p-3.5 text-xs text-teal-800">
               <Info
                 size={16}
                 className="mt-0.5 shrink-0 text-teal-600"
               />
               <span>
-                Child profiles do not require an NIC number, email, personal phone number, or separate login credentials.
+                {isUnder18 && age !== null
+                  ? `Under 18 (${age} yrs) — NIC number, email, personal phone number, or separate login credentials are not required.`
+                  : 'Child profiles do not require an NIC number, email, personal phone number, or separate login credentials.'}
               </span>
             </div>
           )}
@@ -470,4 +582,3 @@ export default function AddFamilyMemberModal({
     </div>
   );
 }
-

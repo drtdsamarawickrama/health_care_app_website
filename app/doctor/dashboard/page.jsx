@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import {
   checkDoctorProfile,
+  getAllPatients,
   getProviderPrescriptions,
 } from '@/lib/api';
 import { displayName } from '@/lib/formatters';
@@ -118,9 +119,10 @@ export default function DoctorDashboardPage() {
       }
 
       try {
-        const [profileRes, rxRes] = await Promise.all([
+        const [profileRes, rxRes, patientsRes] = await Promise.all([
           checkDoctorProfile(memberId),
           getProviderPrescriptions(memberId, { role: 'Doctor' }),
+          getAllPatients(memberId, { role: 'Doctor' }),
         ]);
 
         if (
@@ -144,8 +146,31 @@ export default function DoctorDashboardPage() {
         );
         setAccessMessage(String(profileRes?.message || '').trim());
 
+        const patientList = extractArray(patientsRes, ['patients', 'data']);
+        const patientMap = new Map();
+        for (const p of patientList) {
+          const pId = String(p?.id ?? p?.patient_id ?? '').trim();
+          if (pId) {
+            patientMap.set(pId, p);
+          }
+        }
+
         const rawList = extractArray(rxRes, ['prescriptions', 'data']);
-        const sorted = [...rawList].sort((a, b) => {
+        const enrichedList = rawList.map((pres) => {
+          const pId = String(pres?.patient_id ?? '').trim();
+          const pRecord = pId ? patientMap.get(pId) : null;
+          let nic = String(pres?.patient_nic || pres?.nic_no || '').trim();
+          if (!nic && pRecord) {
+            nic = String(pRecord?.nic_no || pRecord?.nic || '').trim();
+          }
+          return {
+            ...pres,
+            patient_nic: nic,
+            nic_no: nic,
+          };
+        });
+
+        const sorted = [...enrichedList].sort((a, b) => {
           const da = new Date(a?.created_at || a?.date || 0).getTime();
           const db = new Date(b?.created_at || b?.date || 0).getTime();
           return (db || 0) - (da || 0);

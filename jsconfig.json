@@ -6,6 +6,10 @@
         "./*"
       ]
     },
-    "ignoreDeprecations": "6.0"
-  }
+    "jsx": "preserve"
+  },
+  "exclude": [
+    "node_modules",
+    ".next"
+  ]
 }

@@ -25,9 +25,15 @@ import {
 } from 'lucide-react';
 import {
   checkDoctorProfile,
+  getAllPatients,
   getProviderPrescriptions,
 } from '@/lib/api';
 import { displayName } from '@/lib/formatters';
+
+function normalizeNic(nic) {
+  if (!nic) return '';
+  return String(nic).toUpperCase().replace(/[\s-]+/g, '');
+}
 
 function extractArray(result, keys) {
   if (Array.isArray(result)) return result;
@@ -112,9 +118,10 @@ export default function DoctorPrescriptionsPage() {
       }
 
       try {
-        const [profileRes, rxRes] = await Promise.all([
+        const [profileRes, rxRes, patientsRes] = await Promise.all([
           checkDoctorProfile(memberId),
           getProviderPrescriptions(memberId, { role: 'Doctor' }),
+          getAllPatients(memberId, { role: 'Doctor' }),
         ]);
 
         if (
@@ -127,8 +134,38 @@ export default function DoctorPrescriptionsPage() {
 
         setDoctor(profileRes.doctor || null);
 
+        // Build lookup map of patients by their unique ID
+        const patientList = extractArray(patientsRes, ['patients', 'data']);
+        const patientMap = new Map();
+        for (const p of patientList) {
+          const pId = String(p?.id ?? p?.patient_id ?? '').trim();
+          if (pId) {
+            patientMap.set(pId, p);
+          }
+        }
+
         const list = extractArray(rxRes, ['prescriptions', 'data']);
-        const sorted = [...list].sort((a, b) => {
+        const enriched = list.map((pres) => {
+          const pId = String(pres?.patient_id ?? '').trim();
+          const pRecord = pId ? patientMap.get(pId) : null;
+
+          // Prefer backend-returned patient_nic / nic_no;
+          // Fallback to patientMap lookup by actual patient ID (patients.id).
+          // Note: Dependents have their own patient record with nic_no=null,
+          // so this strictly respects patient identity and never assigns guardian NIC.
+          let nic = String(pres?.patient_nic || pres?.nic_no || '').trim();
+          if (!nic && pRecord) {
+            nic = String(pRecord?.nic_no || pRecord?.nic || '').trim();
+          }
+
+          return {
+            ...pres,
+            patient_nic: nic,
+            nic_no: nic,
+          };
+        });
+
+        const sorted = [...enriched].sort((a, b) => {
           const da = new Date(a?.created_at || a?.date || 0).getTime();
           const db = new Date(b?.created_at || b?.date || 0).getTime();
           return (db || 0) - (da || 0);
@@ -160,23 +197,41 @@ export default function DoctorPrescriptionsPage() {
   };
 
   const filteredPrescriptions = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return prescriptions;
+    const raw = searchQuery.trim();
+    if (!raw) return prescriptions;
+
+    const nameQuery = raw.toLowerCase();
+    const nicQuery = normalizeNic(raw);
 
     return prescriptions.filter((pres) => {
       const patName = String(pres?.patient_name || '').toLowerCase();
-      const med = String(pres?.medicine || '').toLowerCase();
+      const patNic = normalizeNic(pres?.patient_nic || pres?.nic_no || '');
+
+      // 1. Full or partial patient name search (case-insensitive)
+      const matchesName = patName.includes(nameQuery);
+
+      // 2. Full or partial NIC number search (case-insensitive, ignores spaces & hyphens)
+      const matchesNic = Boolean(
+        nicQuery.length > 0 && patNic.length > 0 && patNic.includes(nicQuery)
+      );
+
+      // 3. Prescription ID search (e.g. PRE-23 or 23)
       const id = formatPrescriptionId(pres).toLowerCase();
+      const matchesId = id.includes(nameQuery);
+
+      // 4. Medicine or generic name search
+      const med = String(pres?.medicine || '').toLowerCase();
       const itemMatch = getItemsFor(pres).some((item) => {
         const dName = String(item?.drug_name || '').toLowerCase();
         const gName = String(item?.generic_name || '').toLowerCase();
-        return dName.includes(q) || gName.includes(q);
+        return dName.includes(nameQuery) || gName.includes(nameQuery);
       });
 
       return (
-        patName.includes(q) ||
-        med.includes(q) ||
-        id.includes(q) ||
+        matchesName ||
+        matchesNic ||
+        matchesId ||
+        med.includes(nameQuery) ||
         itemMatch
       );
     });
@@ -279,14 +334,16 @@ export default function DoctorPrescriptionsPage() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search patient, medicine or prescription ID..."
+                placeholder="Search by patient name or NIC number..."
                 className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-10 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#2e7d32] focus:ring-4 focus:ring-emerald-500/10"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  title="Clear search"
+                  aria-label="Clear search"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
                 >
                   <X size={16} />
                 </button>
@@ -304,12 +361,34 @@ export default function DoctorPrescriptionsPage() {
 
           {/* Prescriptions List */}
           {filteredPrescriptions.length === 0 ? (
-            <div className="mt-6 flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
-              <FileText size={38} className="text-slate-400" />
-              <p className="mt-3 text-sm font-bold text-slate-600">
-                No prescriptions found.
-              </p>
-            </div>
+            searchQuery.trim() ? (
+              <div className="mt-6 flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                  <Search size={24} />
+                </div>
+                <p className="mt-3 text-sm font-bold text-slate-700">
+                  No matching prescriptions found.
+                </p>
+                <p className="mt-1 max-w-sm text-xs text-slate-500">
+                  No results match &ldquo;{searchQuery}&rdquo;. Try searching with another name or NIC.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3.5 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
+                >
+                  <X size={14} />
+                  <span>Clear search</span>
+                </button>
+              </div>
+            ) : (
+              <div className="mt-6 flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+                <FileText size={38} className="text-slate-400" />
+                <p className="mt-3 text-sm font-bold text-slate-600">
+                  No prescriptions found.
+                </p>
+              </div>
+            )
           ) : (
             <div className="mt-4 space-y-3">
               {filteredPrescriptions.map((pres, index) => {
@@ -349,9 +428,16 @@ export default function DoctorPrescriptionsPage() {
                       </div>
 
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-black text-slate-900 sm:text-base">
-                          {patientName}
-                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="truncate text-sm font-black text-slate-900 sm:text-base">
+                            {patientName}
+                          </p>
+                          {pres.patient_nic ? (
+                            <span className="shrink-0 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                              NIC: {pres.patient_nic}
+                            </span>
+                          ) : null}
+                        </div>
                         <p className="mt-0.5 truncate text-xs font-bold text-slate-700">
                           {medicineTitle}
                         </p>

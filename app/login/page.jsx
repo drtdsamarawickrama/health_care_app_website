@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -18,6 +18,10 @@ import {
 } from '@/lib/api';
 import { useAuth } from '@/components/AuthContext';
 
+const SAVED_PHONE_KEY = 'healthcare_saved_phone';
+const SAVED_NIC_KEY = 'healthcare_saved_nic';
+const REMEMBER_ME_KEY = 'healthcare_remember_me';
+
 export default function LoginPage() {
   const router = useRouter();
   const { saveAuthSession, logout } =
@@ -26,10 +30,49 @@ export default function LoginPage() {
   const [phone, setPhone] = useState('');
   const [nic, setNic] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
+  const [hasSavedCredentials, setHasSavedCredentials] =
+    useState(false);
 
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    // Security rule: Never store or prefill password
+    localStorage.removeItem('healthcare_saved_password');
+    const savedRemember =
+      localStorage.getItem(REMEMBER_ME_KEY) === 'true';
+    const savedPhone =
+      localStorage.getItem(SAVED_PHONE_KEY) || '';
+    const savedNic =
+      localStorage.getItem(SAVED_NIC_KEY) || '';
+
+    if (
+      savedRemember &&
+      (savedPhone.trim() || savedNic.trim())
+    ) {
+      setPhone(savedPhone);
+      setNic(savedNic);
+      setPassword('');
+      setRememberMe(true);
+      setHasSavedCredentials(true);
+    }
+  }, []);
+
+  const handleClearSavedCredentials = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(SAVED_PHONE_KEY);
+      localStorage.removeItem(SAVED_NIC_KEY);
+      localStorage.removeItem(REMEMBER_ME_KEY);
+    }
+    setPhone('');
+    setNic('');
+    setPassword('');
+    setRememberMe(false);
+    setHasSavedCredentials(false);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -93,6 +136,27 @@ export default function LoginPage() {
           'This account has an unsupported user type.'
         );
         return;
+      }
+
+      if (typeof window !== 'undefined') {
+        if (rememberMe) {
+          localStorage.setItem(
+            SAVED_PHONE_KEY,
+            phone.trim()
+          );
+          localStorage.setItem(
+            SAVED_NIC_KEY,
+            nic.trim().toUpperCase()
+          );
+          localStorage.setItem(
+            REMEMBER_ME_KEY,
+            'true'
+          );
+        } else {
+          localStorage.removeItem(SAVED_PHONE_KEY);
+          localStorage.removeItem(SAVED_NIC_KEY);
+          localStorage.removeItem(REMEMBER_ME_KEY);
+        }
       }
 
       saveAuthSession({
@@ -671,20 +735,35 @@ export default function LoginPage() {
                   </div>
                 </div>
 
-                {/* Forgot password */}
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    className="
-                      text-sm
-                      font-semibold
-                      text-teal-600
-                      transition
-                      hover:text-teal-700
-                    "
-                  >
-                    Forgot Password?
-                  </button>
+                {/* Remember Phone & NIC + Clear Saved */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) =>
+                        setRememberMe(
+                          e.target.checked
+                        )
+                      }
+                      className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                    />
+                    <span>
+                      Remember Phone &amp; NIC on this device
+                    </span>
+                  </label>
+
+                  {hasSavedCredentials && (
+                    <button
+                      type="button"
+                      onClick={
+                        handleClearSavedCredentials
+                      }
+                      className="text-xs font-semibold text-red-600 hover:underline"
+                    >
+                      Clear saved
+                    </button>
+                  )}
                 </div>
 
                 {/* Login button */}

@@ -32,6 +32,39 @@ import {
   getAllPatients,
 } from '@/lib/api';
 import DoctorAddPatientModal from '@/components/DoctorAddPatientModal';
+import DoctorAddFamilyMemberModal from '@/components/DoctorAddFamilyMemberModal';
+
+function calcPatientAge(dob) {
+  if (!dob) return null;
+  const parts = String(dob).trim().split('-').map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
+  const [year, month, day] = parts;
+  const today = new Date();
+  let age = today.getFullYear() - year;
+  const m = today.getMonth() + 1;
+  const d = today.getDate();
+  if (m < month || (m === month && d < day)) {
+    age--;
+  }
+  return age >= 0 ? age : null;
+}
+
+function formatNicDisplay(patient) {
+  const raw = String(patient?.nic_no || patient?.nic || '').trim();
+  if (raw) return raw;
+  const age = calcPatientAge(patient?.date_of_birth);
+  if (age !== null && age < 18) return 'Under 18 (No NIC)';
+  return 'Not specified';
+}
+
+function formatDependentSubtitle(patient) {
+  const rel = String(
+    patient?.relationship_to_user || patient?.relationship || 'Self'
+  ).trim();
+  if (!rel || rel === 'Self') return '';
+  const guardian = String(patient?.guardian_name || '').trim();
+  return guardian ? `${rel} of ${guardian}` : rel;
+}
 
 // ============================================================
 // MENU
@@ -57,6 +90,7 @@ export default function DoctorPatientsPage() {
   const [search, setSearch] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [addPatientOpen, setAddPatientOpen] = useState(false);
+  const [addFamilyMemberOpen, setAddFamilyMemberOpen] = useState(false);
 
   // =========================================================
   // SESSION
@@ -421,7 +455,7 @@ export default function DoctorPatientsPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               <div
                 className="
                   rounded-full
@@ -442,7 +476,16 @@ export default function DoctorPatientsPage() {
                 className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-teal-700"
               >
                 <UserPlus size={15} />
-                <span>Register Patient</span>
+                <span>Add Patient</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAddFamilyMemberOpen(true)}
+                className="inline-flex items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3.5 py-2 text-xs font-bold text-teal-800 hover:bg-teal-100"
+              >
+                <UsersRound size={15} />
+                <span>Add Family Member</span>
               </button>
             </div>
           </div>
@@ -756,11 +799,27 @@ export default function DoctorPatientsPage() {
         <DoctorMobileNav />
 
         <DoctorAddPatientModal
-          isOpen={addPatientOpen}
+          open={addPatientOpen}
           onClose={() => setAddPatientOpen(false)}
           doctorMemberId={memberId}
-          onPatientCreated={(newPatient) => {
-            setPatients((prev) => [newPatient, ...prev]);
+          onPatientCreated={(created) => {
+            const p = created?.patient || created;
+            if (p) {
+              setPatients((prev) => [p, ...prev]);
+            }
+          }}
+        />
+
+        <DoctorAddFamilyMemberModal
+          open={addFamilyMemberOpen}
+          onClose={() => setAddFamilyMemberOpen(false)}
+          doctorMemberId={memberId}
+          patients={patients}
+          onFamilyMemberCreated={(created) => {
+            const p = created?.patient || created;
+            if (p) {
+              setPatients((prev) => [p, ...prev]);
+            }
           }}
         />
       </div>
@@ -819,10 +878,8 @@ function DesktopPatientRow({
     patient?.name ||
     `Patient #${patientId || '-'}`;
 
-  const nic =
-    patient?.nic_no ||
-    patient?.nic ||
-    'Not specified';
+  const nic = formatNicDisplay(patient);
+  const depSubtitle = formatDependentSubtitle(patient);
 
   const phone =
     patient?.phone ||
@@ -918,6 +975,11 @@ function DesktopPatientRow({
           >
             Patient ID #{patientId || '-'}
           </p>
+          {depSubtitle && (
+            <p className="mt-0.5 truncate text-[11px] font-bold text-teal-700">
+              {depSubtitle}
+            </p>
+          )}
         </div>
       </div>
 
@@ -1040,10 +1102,8 @@ function MobilePatientRow({
     patient?.name ||
     `Patient #${patientId || '-'}`;
 
-  const nic =
-    patient?.nic_no ||
-    patient?.nic ||
-    'Not specified';
+  const nic = formatNicDisplay(patient);
+  const depSubtitle = formatDependentSubtitle(patient);
 
   const phone =
     patient?.phone ||
@@ -1117,6 +1177,11 @@ function MobilePatientRow({
             {' • '}
             Patient ID #{patientId || '-'}
           </p>
+          {depSubtitle && (
+            <p className="mt-0.5 text-xs font-bold text-teal-700">
+              {depSubtitle}
+            </p>
+          )}
 
           <div
             className="
