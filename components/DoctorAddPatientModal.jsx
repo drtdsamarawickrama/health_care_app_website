@@ -216,6 +216,8 @@ export default function DoctorAddPatientModal({
 
       setCreatedInfo({
         patient: newPatient,
+        account_created: result?.account_created === true,
+        temporary_password: result?.temporary_password,
         message:
           result.message ||
           'Patient added successfully',
@@ -289,6 +291,17 @@ export default function DoctorAddPatientModal({
                 ) has been created and selected.
               </p>
             </div>
+
+            {createdInfo.account_created && createdInfo.temporary_password ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 text-xs text-amber-900">
+                <p className="font-bold">One-Time Login Credentials:</p>
+                <p className="mt-1 font-mono">Temporary Password: {createdInfo.temporary_password}</p>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-teal-200 bg-teal-50/80 p-4 text-xs font-medium text-teal-900">
+                The patient can sign up with Mobile: <strong>{createdInfo.patient.phone}</strong> and NIC: <strong>{createdInfo.patient.nic_no || 'N/A'}</strong> to see their prescriptions.
+              </div>
+            )}
 
             <div className="flex justify-end">
               <button
@@ -372,31 +385,42 @@ export default function DoctorAddPatientModal({
               </div>
 
               {isUnder18 ? (
-                <div className="sm:col-span-2 flex items-center gap-2.5 rounded-2xl border border-teal-200 bg-teal-50/70 px-3.5 py-2.5 text-xs font-semibold text-teal-800">
+                <div className="sm:col-span-2 flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50/80 px-3.5 py-3 text-xs text-amber-900">
                   <Info
                     size={16}
-                    className="shrink-0 text-teal-600"
+                    className="mt-0.5 shrink-0 text-amber-600"
                   />
                   <span>
-                    Under 18 ({age} yrs) — NIC is not required.
+                    Children cannot sign up themselves. Use Add Family Member and choose the parent or guardian&apos;s account so the parent can see these prescriptions.
                   </span>
                 </div>
               ) : (
-                <div className="sm:col-span-2">
-                  <label className="mb-1.5 block text-xs font-bold text-slate-700">
-                    NIC Number *
-                  </label>
-                  <input
-                    type="text"
-                    value={nicNo}
-                    onChange={(e) =>
-                      setNicNo(
-                        e.target.value.toUpperCase()
-                      )
-                    }
-                    placeholder="983651435V or 200018501033"
-                    className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm uppercase text-slate-800 outline-none focus:border-teal-500"
-                  />
+                <div className="sm:col-span-2 space-y-3">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                      NIC Number *
+                    </label>
+                    <input
+                      type="text"
+                      value={nicNo}
+                      onChange={(e) =>
+                        setNicNo(
+                          e.target.value.toUpperCase()
+                        )
+                      }
+                      placeholder="983651435V or 200018501033"
+                      className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm uppercase text-slate-800 outline-none focus:border-teal-500"
+                    />
+                  </div>
+                  <div className="flex items-start gap-2.5 rounded-2xl border border-teal-200 bg-teal-50/70 px-3.5 py-2.5 text-xs text-teal-800">
+                    <Info
+                      size={16}
+                      className="mt-0.5 shrink-0 text-teal-600"
+                    />
+                    <span>
+                      The patient can sign up in the app or website with this phone number and NIC to see their prescriptions. Enter the patient&apos;s own phone number.
+                    </span>
+                  </div>
                 </div>
               )}
 

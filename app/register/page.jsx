@@ -103,7 +103,9 @@ export default function RegisterPage() {
       }
 
       setSuccess(
-        result?.message || 'Registration successful. Redirecting to profile setup...'
+        result?.existing_profile_linked === true
+          ? 'Registration successful. Your records from your doctor were linked to your account.'
+          : (result?.message || 'Registration successful. Redirecting to profile setup...')
       );
 
       let loginResult = null;
